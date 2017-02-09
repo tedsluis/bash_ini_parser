@@ -172,7 +172,7 @@ function read_ini()
 	
 	while read -r line || [ -n "$line" ]
 	do
-#echo line = "$line"
+echo line = "$line"
 
 		((LINE_NUM++))
 
@@ -237,6 +237,7 @@ function read_ini()
 			VARNAME=${VARNAME_PREFIX}__${SECTION}__${VAR//./_}
 		fi
 		eval "${INI_ALL_VARNAME}=\"\${${INI_ALL_VARNAME}# } ${VARNAME}\""
+		echo "INI_ALL_VARNAME=$INI_ALL_VARNAME, INI_ALL_VARNAME=$INI_ALL_VARNAME, VARNAME=$VARNAME, SECTION=$SECTION, VAR=$VAR"
 
 		if [[ "${VAL}" =~ ^\".*\"$  ]]
 		then
