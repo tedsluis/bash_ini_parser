@@ -1,3 +1,5 @@
+#
+
 INI-FILE="test/test10.ini"
 
 INI_ALL_VARNAME="${VARNAME_PREFIX}__ALL_VARS"
