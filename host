@@ -1,0 +1,138 @@
+INI-FILE="test/test10.ini"
+
+INI_ALL_VARNAME="${VARNAME_PREFIX}__ALL_VARS"
+INI_ALL_SECTION="${VARNAME_PREFIX}__ALL_SECTIONS"
+INI_NUMSECTIONS_VARNAME="${VARNAME_PREFIX}__NUMSECTIONS"
+
+if [ "${CLEAN_ENV}" = 1 ] ;then
+	eval unset "\$${INI_ALL_VARNAME}"
+fi
+unset ${INI_ALL_VARNAME}
+unset ${INI_ALL_SECTION}
+unset ${INI_NUMSECTIONS_VARNAME}
+
+if [ -z "$INI_FILE" ] ;then
+	echo "Error: Inventory file '$INI_FILE' does not exists!"
+	exit
+fi
+	
+# Sanitise BOOLEANS - interpret "0" as 0, anything else as 1
+if [ "$BOOLEANS" != "0" ]
+then
+	BOOLEANS=1
+fi
+
+
+# }}} END Options
+
+# }}} END Deal with command line args
+
+local LINE_NUM=0
+local SECTIONS_NUM=0
+local SECTION=""
+	
+# IFS is used in "read" and we want to switch it within the loop
+local IFS=$' \t\n'
+local IFS_OLD="${IFS}"
+	
+# we need some optional shell behavior (shopt) but want to restore
+# current settings before returning
+local SWITCH_SHOPT=""
+pollute_bash
+	
+while read -r line || [ -n "$line" ]
+do
+echo line = "$line"
+
+	((LINE_NUM++))
+	# Skip blank lines and comments
+	if [ -z "$line" -o "${line:0:1}" = ";" -o "${line:0:1}" = "#" ] ; then
+		continue
+	fi
+
+	# Section marker?
+	if [[ "${line}" =~ ^\[[a-zA-Z0-9_]{1,}\]$ ]] ; then
+
+		# Set SECTION var to name of section (strip [ and ] from section marker)
+		SECTION="${line#[}"
+		SECTION="${SECTION%]}"
+		eval "${INI_ALL_SECTION}=\"\${${INI_ALL_SECTION}# } $SECTION\""
+		((SECTIONS_NUM++))
+
+		continue
+	fi
+
+	# Are we getting only a specific section? And are we currently in it?
+	if [ ! -z "$INI_SECTION" ] ; then
+		if [ "$SECTION" != "$INI_SECTION" ] ; then
+			continue
+		fi
+	fi
+
+	# Valid var/value line? (check for variable name and then '=')
+	if ! [[ "${line}" =~ ^[a-zA-Z0-9._]{1,}[[:space:]]*= ]] ; then
+		echo "Error: Invalid line:" >&2
+		echo " ${LINE_NUM}: $line" >&2
+		cleanup_bash
+		return 1
+	fi
+
+
+	# split line at "=" sign
+	IFS="="
+	read -r VAR VAL <<< "${line}"
+	IFS="${IFS_OLD}"
+		
+	# delete spaces around the equal sign (using extglob)
+	VAR="${VAR%%+([[:space:]])}"
+	VAL="${VAL##+([[:space:]])}"
+	VAR=$(echo $VAR)
+
+	# Construct variable name:
+	# ${VARNAME_PREFIX}__$SECTION__$VAR
+	# Or if not in a section:
+	# ${VARNAME_PREFIX}__$VAR
+	# In both cases, full stops ('.') are replaced with underscores ('_')
+	if [ -z "$SECTION" ] ; then
+		VARNAME=${VARNAME_PREFIX}__${VAR//./_}
+	else
+		VARNAME=${VARNAME_PREFIX}__${SECTION}__${VAR//./_}
+	fi
+	eval "${INI_ALL_VARNAME}=\"\${${INI_ALL_VARNAME}# } ${VARNAME}\""
+	echo "INI_ALL_VARNAME=$INI_ALL_VARNAME, INI_ALL_VARNAME=$INI_ALL_VARNAME, VARNAME=$VARNAME, SECTION=$SECTION, VAR=$VAR"
+
+	if [[ "${VAL}" =~ ^\".*\"$  ]] ; then
+		# remove existing double quotes
+		VAL="${VAL##\"}"
+		VAL="${VAL%%\"}"
+	elif [[ "${VAL}" =~ ^\'.*\'$  ]] ; then
+		# remove existing single quotes
+		VAL="${VAL##\'}"
+		VAL="${VAL%%\'}"
+	elif [ "$BOOLEANS" = 1 ] ; then
+		# Value is not enclosed in quotes
+		# Booleans processing is switched on, check for special boolean
+		# values and convert
+
+		# here we compare case insensitive because
+		# "shopt nocasematch"
+		case "$VAL" in
+			yes | true | on )
+				VAL=1
+			;;
+			no | false | off )
+				VAL=0
+			;;
+		esac
+	fi
+		
+
+	# enclose the value in single quotes and escape any
+	# single quotes and backslashes that may be in the value
+	VAL="${VAL//\\/\\\\}"
+	VAL="\$'${VAL//\'/\'}'"
+
+	eval "$VARNAME=$VAL"
+done  <"${INI_FILE}"
+
+
